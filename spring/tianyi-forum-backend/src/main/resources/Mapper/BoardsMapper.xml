@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.tianyi.tianyiforumbackend.Mapper.BoardsMapper">
+
+    <select id="findAll" resultType="com.tianyi.tianyiforumbackend.VO.BoardVO">
+        select b.*,u.username as moderator,
+        (select count(*) from posts p left join boards as b on p.board_id=b.id) as postCount
+        from boards b
+        left join users u on b.moderator_id=u.id
+
+    </select>
+    <select id="getModeratorIdByBoardId" resultType="java.lang.Long">
+        select moderator_id from boards where id=#{boardId}
+    </select>
+
+    <insert id="insert">
+        insert into boards
+        (name,description,moderator_id,sort) values (#{name},#{description},#{moderatorId},#{sort})
+    </insert>
+    <update id="update">
+        update boards
+        set name=#{boardUpdateRequestDTO.name},
+            description=#{boardUpdateRequestDTO.description},
+            moderator_id=#{boardUpdateRequestDTO.moderatorId},
+            sort=#{boardUpdateRequestDTO.sort}
+        where id=#{boardId}
+    </update>
+
+    <delete id="delete">
+        delete from boards where id = #{boardId}
+
+    </delete>
+    <select id="count" resultType="java.lang.Integer">
+        SELECT COUNT(*) AS post_count
+        FROM posts
+        WHERE board_id = #{boardId};
+    </select>
+    <update id="updateModeratorId">
+        UPDATE boards
+        SET moderator_id = #{moderatorId},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{boardId};
+    </update>
+</mapper>

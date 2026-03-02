@@ -1,0 +1,683 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "天翼论坛 - 用户端 API",
+    "version": "2.4.0",
+    "description": "用户端接口文档 v2.4.0（2026-01-05 更新）\n\n## 更新日志\n- v2.4.0: 查询接口统一使用DTO传参，帖子列表改为POST /portal/posts/query，评论列表改为POST方式\n- v2.3.0: 增强搜索功能，支持关键词搜索帖子（标题、内容、作者）；帖子详情页新增投诉功能\n- v2.2.0: 对齐前端实现，补充发帖/评论/投诉/个人中心调用说明及请求示例\n- v2.1.0: 后端已实现用户注册、登录、个人资料、板块列表、帖子列表等核心接口\n- v2.0.0: 管理员和用户登录完全分离\n\n## 通用说明\n- 统一返回 Result: {code, msg, data}\n- code=1 表示成功，code=0 表示失败\n- 鉴权接口使用 Authorization: Bearer <user_token>\n- 用户 token 存储在 localStorage 的 user_token 字段"
+  },
+  "servers": [{ "url": "" }],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "用户 JWT Token，存储在 localStorage 的 user_token 字段"
+      }
+    },
+    "schemas": {
+      "Result": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 1, "description": "1 表示成功，0 表示失败" },
+          "msg": { "type": "string", "example": "success" },
+          "data": { "type": "object" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "zhangsan" },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "password123",
+            "minLength": 6
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["username", "email", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "zhangsan", "minLength": 3, "maxLength": 20 },
+          "email": { "type": "string", "format": "email", "example": "zhangsan@example.com" },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "password123",
+            "minLength": 6
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "eyJhbGciOi...",
+            "description": "JWT Token，需要存储到 localStorage 的 user_token 中"
+          },
+          "expiresIn": { "type": "integer", "example": 3600, "description": "token 过期时间（秒）" }
+        }
+      },
+      "Board": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "技术交流" },
+          "description": { "type": "string", "example": "讨论各种技术话题", "nullable": true },
+          "moderator": {
+            "type": "string",
+            "example": "admin",
+            "description": "版主用户名",
+            "nullable": true
+          },
+          "moderatorId": { "type": "integer", "example": 1, "nullable": true },
+          "postCount": {
+            "type": "integer",
+            "example": 100,
+            "description": "帖子数量",
+            "nullable": true
+          },
+          "sort": { "type": "integer", "example": 1, "description": "排序序号", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["id", "name"]
+      },
+      "PostSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "title": { "type": "string", "example": "如何学习 Vue3" },
+          "boardId": { "type": "integer", "example": 1 },
+          "boardName": { "type": "string", "example": "技术交流", "nullable": true },
+          "author": { "type": "string", "example": "张三" },
+          "authorId": { "type": "integer", "example": 2 },
+          "hotScore": {
+            "type": "integer",
+            "example": 85,
+            "description": "热度分数",
+            "nullable": true
+          },
+          "isTop": {
+            "type": "boolean",
+            "example": false,
+            "description": "是否置顶",
+            "nullable": true
+          },
+          "isFeatured": {
+            "type": "boolean",
+            "example": false,
+            "description": "是否精选",
+            "nullable": true
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "title", "boardId", "author", "authorId", "createdAt"]
+      },
+      "PostDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PostSummary" },
+          {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "example": "这是帖子的详细内容...",
+                "description": "帖子正文内容"
+              },
+              "violationScore": {
+                "type": "integer",
+                "example": 0,
+                "description": "违规分数",
+                "nullable": true
+              },
+              "status": {
+                "type": "string",
+                "example": "normal",
+                "enum": ["normal", "hidden", "deleted"],
+                "description": "帖子状态",
+                "nullable": true
+              },
+              "updatedAt": { "type": "string", "format": "date-time", "nullable": true }
+            },
+            "required": ["content"]
+          }
+        ]
+      },
+      "PostQueryDTO": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1, "minimum": 1, "description": "页码" },
+          "pageSize": {
+            "type": "integer",
+            "example": 10,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "每页数量"
+          },
+          "keyword": {
+            "type": "string",
+            "example": "Vue3",
+            "description": "搜索关键词，匹配标题、内容、作者"
+          },
+          "sortBy": {
+            "type": "string",
+            "example": "new",
+            "enum": ["new", "hot"],
+            "description": "排序方式"
+          },
+          "boardId": { "type": "integer", "example": 1, "description": "板块ID" }
+        }
+      },
+      "CreatePostRequest": {
+        "type": "object",
+        "required": ["title", "content", "boardId"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "如何学习 Vue3",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "content": {
+            "type": "string",
+            "example": "我想学习 Vue3 框架，有什么推荐的学习路径吗？",
+            "minLength": 1
+          },
+          "boardId": { "type": "integer", "example": 1 }
+        }
+      },
+      "PagePost": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PostSummary" },
+            "description": "帖子列表"
+          },
+          "total": { "type": "integer", "example": 100, "description": "总记录数" }
+        }
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "postId": { "type": "integer", "example": 1 },
+          "parentId": {
+            "type": "integer",
+            "nullable": true,
+            "example": null,
+            "description": "父评论 ID，null 表示顶级评论"
+          },
+          "content": { "type": "string", "example": "非常有帮助的分享！" },
+          "authorId": { "type": "integer", "example": 3 },
+          "author": { "type": "string", "example": "李四" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CommentQueryDTO": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1, "minimum": 1, "description": "页码" },
+          "pageSize": {
+            "type": "integer",
+            "example": 10,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "每页数量"
+          },
+          "postId": { "type": "integer", "example": 1, "description": "帖子ID" }
+        }
+      },
+      "CreateCommentRequest": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "content": { "type": "string", "example": "非常有帮助的分享！", "minLength": 1 },
+          "parentId": {
+            "type": "integer",
+            "nullable": true,
+            "example": null,
+            "description": "父评论 ID，用于回复评论"
+          }
+        }
+      },
+      "PageComment": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Comment" },
+            "description": "评论列表"
+          },
+          "total": { "type": "integer", "example": 50, "description": "总评论数" }
+        }
+      },
+      "CreateComplaintRequest": {
+        "type": "object",
+        "required": ["targetType", "targetId", "reason"],
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": ["post", "comment", "user"],
+            "example": "post",
+            "description": "投诉目标类型"
+          },
+          "targetId": { "type": "integer", "example": 1, "description": "目标 ID" },
+          "reason": { "type": "string", "example": "包含不当言论", "description": "投诉原因" },
+          "evidence": {
+            "type": "string",
+            "example": "截图链接：...",
+            "description": "证据（可选）"
+          }
+        }
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "username": { "type": "string", "example": "张三" },
+          "email": { "type": "string", "example": "zhangsan@example.com" },
+          "avatarUrl": {
+            "type": "string",
+            "example": "https://example.com/avatar.jpg",
+            "nullable": true
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "lastLoginAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/user/auth/register": {
+      "post": {
+        "summary": "用户注册",
+        "description": "注册新用户账号，成功后自动登录返回 token",
+        "tags": ["用户认证"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/LoginResponse" } }
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "code": 1,
+                      "msg": "注册成功",
+                      "data": {
+                        "token": "eyJhbGciOi...",
+                        "expiresIn": 3600
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/auth/login": {
+      "post": {
+        "summary": "用户登录",
+        "description": "用户登录，返回 JWT token。注意：此 token 需要存储在 localStorage 的 user_token 字段中，不要与 admin_token 混用",
+        "tags": ["用户认证"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/LoginResponse" } }
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "code": 1,
+                      "msg": "登录成功",
+                      "data": {
+                        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                        "expiresIn": 3600
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/boards": {
+      "get": {
+        "summary": "获取板块列表",
+        "description": "获取所有可用的讨论板块，无需登录",
+        "tags": ["门户-板块"],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Board" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/posts/query": {
+      "post": {
+        "summary": "查询帖子列表",
+        "description": "使用DTO方式POST查询帖子列表，支持关键词搜索（匹配帖子标题、内容、作者名）、板块筛选和排序。个人中心查看我的帖子时，前端会调用本接口并基于 authorId 进行客户端过滤",
+        "tags": ["门户-帖子"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PostQueryDTO" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/PagePost" } }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/posts": {
+      "post": {
+        "summary": "发布帖子",
+        "description": "创建新帖子，需要用户登录。前端使用 user_token 鉴权",
+        "tags": ["门户-帖子"],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePostRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发布成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    { "type": "object", "properties": { "data": { "type": "null" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "未登录或 token 无效" }
+        }
+      }
+    },
+    "/portal/posts/{id}": {
+      "get": {
+        "summary": "获取帖子详情",
+        "description": "根据 ID 获取帖子的详细内容。用户可在详情页下方评论或投诉该帖子",
+        "tags": ["门户-帖子"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "帖子 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/PostDetail" } }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": { "description": "帖子不存在" }
+        }
+      }
+    },
+    "/portal/posts/{id}/comments/query": {
+      "post": {
+        "summary": "查询评论列表",
+        "description": "使用DTO方式POST查询指定帖子的评论列表",
+        "tags": ["门户-评论"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "帖子 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CommentQueryDTO" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/PageComment" } }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/posts/{id}/comments": {
+      "post": {
+        "summary": "发表评论",
+        "description": "对指定帖子发表评论，需要用户登录",
+        "tags": ["门户-评论"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "帖子 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateCommentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发表成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    { "type": "object", "properties": { "data": { "type": "null" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "未登录或 token 无效" }
+        }
+      }
+    },
+    "/portal/complaints": {
+      "post": {
+        "summary": "提交投诉",
+        "description": "投诉违规的帖子、评论或用户，需要用户登录。前端在帖子详情页提供投诉按钮，点击后弹出投诉表单填写原因和证据",
+        "tags": ["门户-投诉"],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateComplaintRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "提交成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    { "type": "object", "properties": { "data": { "type": "null" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "未登录或 token 无效" }
+        }
+      }
+    },
+    "/user/profile": {
+      "get": {
+        "summary": "获取当前用户信息",
+        "description": "获取当前登录用户的个人信息，用于登录后在页面右上角展示，也用于前端缓存 user_info 以加载个人中心/我的帖子",
+        "tags": ["用户信息"],
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "type": "object",
+                      "properties": { "data": { "$ref": "#/components/schemas/UserProfile" } }
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "code": 1,
+                      "msg": "success",
+                      "data": {
+                        "id": 1,
+                        "username": "张三",
+                        "email": "zhangsan@example.com",
+                        "avatarUrl": null,
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "lastLoginAt": "2026-01-04T10:30:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "未登录或 token 无效" }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "用户认证", "description": "用户注册、登录相关接口" },
+    { "name": "门户-板块", "description": "讨论板块相关接口" },
+    { "name": "门户-帖子", "description": "帖子浏览、发布相关接口" },
+    { "name": "门户-评论", "description": "评论浏览、发表相关接口" },
+    { "name": "门户-投诉", "description": "内容投诉相关接口" },
+    { "name": "用户信息", "description": "用户个人信息相关接口" }
+  ]
+}

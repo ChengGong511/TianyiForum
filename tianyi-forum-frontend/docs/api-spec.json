@@ -1,0 +1,1023 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "天翼论坛 - 管理端 API",
+    "version": "1.0.0",
+    "description": "天翼论坛管理后台接口文档。所有业务响应统一返回 {code, msg, data} 的 Result 包装，业务数据放在 data 字段。",
+    "contact": { "name": "天翼论坛开发团队" }
+  },
+  "servers": [
+    { "url": "http://localhost:8080/api", "description": "本地开发环境" },
+    { "url": "https://api.tianyi-forum.com/api", "description": "生产环境" }
+  ],
+  "tags": [
+    { "name": "认证模块", "description": "管理员登录、权限校验" },
+    { "name": "用户管理", "description": "用户列表、封禁/解封" },
+    { "name": "内容管理", "description": "帖子审核、置顶、加精" },
+    { "name": "投诉受理", "description": "用户举报处理" },
+    { "name": "板块配置", "description": "论坛分区与版主管理" },
+    { "name": "系统配置", "description": "敏感词库、系统设置" }
+  ],
+  "paths": {
+    "/admin/auth/login": {
+      "post": {
+        "summary": "管理员登录",
+        "tags": ["认证模块"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "example": "admin" },
+                  "password": { "type": "string", "example": "admin123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "token": { "type": "string", "example": "eyJhbGciOi..." },
+                            "expiresIn": { "type": "integer", "example": 7200 }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "用户名或密码错误",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/admin/auth/info": {
+      "get": {
+        "summary": "获取当前管理员信息",
+        "tags": ["认证模块"],
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "integer", "example": 1 },
+                            "username": { "type": "string", "example": "admin" },
+                            "roles": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["admin"]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "summary": "获取用户列表（分页）",
+        "tags": ["用户管理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1, "example": 1 }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "example": 10 }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "schema": { "type": "string", "example": "user_10" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["active", "banned"], "example": "active" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": { "$ref": "#/components/schemas/User" }
+                            },
+                            "total": { "type": "integer", "example": 137 }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/status": {
+      "put": {
+        "summary": "更新用户状态（封禁/解封）",
+        "tags": ["用户管理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "example": 10 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status", "reason"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["active", "banned"], "example": "banned" },
+                  "reason": { "type": "string", "example": "发布违规内容" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/posts": {
+      "post": {
+        "summary": "获取帖子列表（分页）",
+        "tags": ["内容管理"],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["page", "pageSize"],
+                "properties": {
+                  "page": { "type": "integer", "example": 1 },
+                  "pageSize": { "type": "integer", "example": 10 },
+                  "keyword": { "type": "string", "example": "天翼", "nullable": true },
+                  "status": {
+                    "type": "string",
+                    "enum": ["normal", "pending", "archived"],
+                    "example": "pending",
+                    "nullable": true
+                  },
+                  "sortBy": {
+                    "type": "string",
+                    "enum": ["hot", "violation"],
+                    "example": "hot",
+                    "default": "hot",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": { "$ref": "#/components/schemas/Post" }
+                            },
+                            "total": { "type": "integer", "example": 256 }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/posts/{postId}": {
+      "get": {
+        "summary": "获取帖子详情",
+        "tags": ["内容管理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "example": 123 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/Post" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/posts/{postId}/review": {
+      "post": {
+        "summary": "审核帖子（通过/置顶/加精/驳回/下架）",
+        "tags": ["内容管理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "example": 123 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["approve", "top", "featured", "reject", "ban"],
+                    "example": "approve"
+                  },
+                  "reason": { "type": "string", "example": "内容违规" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/complaints": {
+      "get": {
+        "summary": "获取投诉列表",
+        "tags": ["投诉受理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "example": 1 }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "example": 10 }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["pending", "resolved"], "example": "pending" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": { "$ref": "#/components/schemas/Complaint" }
+                            },
+                            "total": { "type": "integer", "example": 15 }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/complaints/{complaintId}": {
+      "get": {
+        "summary": "获取投诉详情",
+        "tags": ["投诉受理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "complaintId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/Complaint" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/complaints/{complaintId}/resolve": {
+      "post": {
+        "summary": "处理投诉",
+        "tags": ["投诉受理"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "complaintId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["dismiss", "takedown", "reject_post"],
+                    "example": "takedown"
+                  },
+                  "handleNote": { "type": "string", "example": "已核实违规，帖子下架" },
+                  "handlerId": { "type": "integer", "example": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "处理成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/boards": {
+      "get": {
+        "summary": "获取板块列表",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Board" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "新增板块",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "sort"],
+                "properties": {
+                  "name": { "type": "string", "example": "技术交流" },
+                  "description": { "type": "string", "example": "讨论编程技术" },
+                  "moderatorId": { "type": "integer", "example": 5 },
+                  "sort": { "type": "integer", "example": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/boards/{boardId}": {
+      "get": {
+        "summary": "获取板块帖子数量",
+        "description": "根据板块ID查询该板块下的帖子数量",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "boardId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "板块ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "type": "integer", "example": 42, "description": "帖子数量" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "板块不存在"
+          }
+        }
+      },
+      "put": {
+        "summary": "更新板块",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "boardId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "moderatorId": { "type": "integer" },
+                  "sort": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除板块",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "boardId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/boards/{boardId}/moderator": {
+      "put": {
+        "summary": "委派版主",
+        "description": "为指定板块委派版主，版主必须是活跃状态的用户",
+        "tags": ["板块配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "boardId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "板块ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["moderatorId"],
+                "properties": {
+                  "moderatorId": { "type": "integer", "example": 5, "description": "版主用户ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "委派成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "板块不存在或用户不存在"
+          }
+        }
+      }
+    },
+    "/admin/sensitive-words": {
+      "get": {
+        "summary": "获取敏感词列表",
+        "tags": ["系统配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "example": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "example": 20 } },
+          { "name": "keyword", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": { "$ref": "#/components/schemas/SensitiveWord" }
+                            },
+                            "total": { "type": "integer" }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "新增敏感词",
+        "tags": ["系统配置"],
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["word", "level"],
+                "properties": {
+                  "word": { "type": "string", "example": "违禁词" },
+                  "level": { "type": "string", "enum": ["高", "中", "低"], "example": "高" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "添加成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/sensitive-words/{wordId}": {
+      "put": {
+        "summary": "更新敏感词",
+        "tags": ["系统配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "wordId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["word", "level"],
+                "properties": {
+                  "word": { "type": "string", "example": "违禁词" },
+                  "level": { "type": "string", "enum": ["高", "中", "低"], "example": "中" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除敏感词",
+        "tags": ["系统配置"],
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "wordId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Result" },
+                    {
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/SuccessResponse" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Result": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 1 },
+          "msg": { "type": "string", "example": "success" },
+          "data": { "type": "object" }
+        },
+        "description": "统一返回包装，业务数据放在 data 字段"
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 0 },
+          "message": { "type": "string", "example": "success" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 1001 },
+          "message": { "type": "string", "example": "参数错误" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "username": { "type": "string", "example": "user_10" },
+          "email": { "type": "string", "example": "user10@example.com" },
+          "role": { "type": "string", "enum": ["user", "moderator", "admin"], "example": "user" },
+          "status": { "type": "string", "enum": ["active", "banned"], "example": "active" },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-01-15 10:30:00"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-12-28 14:20:00"
+          }
+        }
+      },
+      "Post": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 123 },
+          "title": { "type": "string", "example": "欢迎来到天翼论坛" },
+          "content": { "type": "string", "example": "这是帖子正文内容..." },
+          "author": { "type": "string", "example": "user_5" },
+          "authorId": { "type": "integer", "example": 5 },
+          "boardId": { "type": "integer", "example": 2 },
+          "status": {
+            "type": "string",
+            "enum": ["normal", "pending", "archived"],
+            "example": "normal"
+          },
+          "isTop": { "type": "boolean", "example": false },
+          "isFeatured": { "type": "boolean", "example": false },
+          "hotScore": { "type": "integer", "example": 850 },
+          "violationScore": { "type": "integer", "example": 5 },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-12-20 09:15:00"
+          },
+          "updatedAt": { "type": "string", "format": "date-time", "example": "2025-12-28 18:45:00" }
+        }
+      },
+      "Complaint": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "targetType": {
+            "type": "string",
+            "enum": ["post", "comment", "user"],
+            "example": "post"
+          },
+          "targetId": { "type": "integer", "example": 123 },
+          "reason": { "type": "string", "example": "涉嫌广告" },
+          "evidence": { "type": "string", "example": "https://example.com/screenshot.png" },
+          "reporter": { "type": "string", "example": "user_10" },
+          "reporterId": { "type": "integer", "example": 10 },
+          "status": { "type": "string", "enum": ["pending", "resolved"], "example": "pending" },
+          "handleNote": { "type": "string", "example": "已处理" },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-12-28 10:30:00"
+          },
+          "handledAt": { "type": "string", "format": "date-time", "example": "2025-12-28 15:20:00" }
+        }
+      },
+      "Board": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "技术交流" },
+          "description": { "type": "string", "example": "讨论编程、算法等技术话题" },
+          "moderator": { "type": "string", "example": "moderator1" },
+          "moderatorId": { "type": "integer", "example": 5 },
+          "postCount": { "type": "integer", "example": 120 },
+          "sort": { "type": "integer", "example": 1 },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SensitiveWord": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "word": { "type": "string", "example": "违禁词1" },
+          "level": { "type": "string", "enum": ["高", "中", "低"], "example": "高" },
+          "createdAt": { "type": "string", "format": "date-time", "example": "2025-12-01 10:00:00" }
+        }
+      }
+    },
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Token 无效或已过期",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "integer", "example": 401 },
+                "message": { "type": "string", "example": "Unauthorized" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

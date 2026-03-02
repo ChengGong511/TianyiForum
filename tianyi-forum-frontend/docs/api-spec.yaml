@@ -1,0 +1,811 @@
+openapi: 3.0.3
+info:
+  title: 天翼论坛 - 管理端 API
+  description: |
+    天翼论坛管理后台接口文档
+    
+    **开发流程：**
+    1. 前端依据本文档中的接口契约进行 Mock 开发
+    2. 后端参考本文档实现 RESTful API
+    3. 数据库表结构参考响应体字段设计
+    
+    **认证方式：**
+    - 所有需要认证的接口在 Header 中携带 `Authorization: Bearer {token}`
+    
+  version: 1.0.0
+  contact:
+    name: 天翼论坛开发团队
+    
+servers:
+  - url: http://localhost:8080/api
+    description: 本地开发环境
+  - url: https://api.tianyi-forum.com/api
+    description: 生产环境
+
+tags:
+  - name: 认证模块
+    description: 管理员登录、权限校验
+  - name: 用户管理
+    description: 用户列表、封禁/解封
+  - name: 内容管理
+    description: 帖子审核、置顶、加精
+  - name: 投诉受理
+    description: 用户举报处理
+  - name: 板块配置
+    description: 论坛分区与版主管理
+  - name: 系统配置
+    description: 敏感词库、系统设置
+
+paths:
+  # ==================== 认证模块 ====================
+  /admin/auth/login:
+    post:
+      summary: 管理员登录
+      tags: [认证模块]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: admin
+                  description: 管理员账号
+                password:
+                  type: string
+                  example: admin123
+                  description: 密码
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    description: JWT Token
+                  expiresIn:
+                    type: integer
+                    example: 7200
+                    description: 过期时间（秒）
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/auth/info:
+    get:
+      summary: 获取当前管理员信息
+      tags: [认证模块]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  username:
+                    type: string
+                    example: admin
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - admin
+                    description: 角色列表
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ==================== 用户管理 ====================
+  /admin/users:
+    get:
+      summary: 获取用户列表（分页）
+      tags: [用户管理]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+          description: 页码
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 10
+          description: 每页数量
+        - name: keyword
+          in: query
+          schema:
+            type: string
+            example: user_10
+          description: 搜索关键词（用户名/邮箱）
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, banned]
+            example: active
+          description: 用户状态筛选
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+                    example: 137
+                    description: 总记录数
+
+  /admin/users/{userId}/status:
+    put:
+      summary: 更新用户状态（封禁/解封）
+      tags: [用户管理]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [active, banned]
+                  example: banned
+                  description: 目标状态
+                reason:
+                  type: string
+                  example: 发布违规内容
+                  description: 操作原因（必填，用于日志记录）
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ==================== 内容管理 ====================
+  /admin/posts:
+    get:
+      summary: 获取帖子列表（分页）
+      tags: [内容管理]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 10
+        - name: keyword
+          in: query
+          schema:
+            type: string
+            example: 天翼
+          description: 标题/作者搜索
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [normal, pending, archived]
+            example: pending
+          description: 帖子状态
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [hot, violation]
+            example: hot
+            default: hot
+          description: 排序方式
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  total:
+                    type: integer
+                    example: 256
+
+  /admin/posts/audit:
+    post:
+      summary: 审核帖子（置顶/加精/驳回/下架）
+      tags: [内容管理]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [postId, action]
+              properties:
+                postId:
+                  type: integer
+                  example: 123
+                action:
+                  type: string
+                  enum: [top, featured, reject, ban]
+                  example: top
+                  description: |
+                    - top: 置顶
+                    - featured: 加精
+                    - reject: 驳回审核
+                    - ban: 违规下架
+                reason:
+                  type: string
+                  example: 内容优质
+                  description: 操作理由（驳回和下架时必填）
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ==================== 投诉受理 ====================
+  /admin/complaints:
+    get:
+      summary: 获取投诉列表
+      tags: [投诉受理]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 10
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, resolved]
+            example: pending
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Complaint'
+                      total:
+                        type: integer
+                        example: 15
+
+  /admin/complaints/{complaintId}/handle:
+    post:
+      summary: 处理投诉
+      tags: [投诉受理]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: complaintId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result, handleNote]
+              properties:
+                result:
+                  type: string
+                  enum: [approved, rejected]
+                  example: approved
+                  description: 处理结果
+                handleNote:
+                  type: string
+                  example: 已核实违规，已对用户进行封禁
+                  description: 处理说明
+      responses:
+        '200':
+          description: 处理成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ==================== 板块配置 ====================
+  /admin/boards:
+    get:
+      summary: 获取板块列表
+      tags: [板块配置]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Board'
+    post:
+      summary: 新增板块
+      tags: [板块配置]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, sort]
+              properties:
+                name:
+                  type: string
+                  example: 技术交流
+                description:
+                  type: string
+                  example: 讨论编程技术
+                moderatorId:
+                  type: integer
+                  example: 5
+                  description: 版主用户ID
+                sort:
+                  type: integer
+                  example: 1
+                  description: 排序权重
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /admin/boards/{boardId}:
+    put:
+      summary: 更新板块
+      tags: [板块配置]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                moderatorId:
+                  type: integer
+                sort:
+                  type: integer
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+    delete:
+      summary: 删除板块
+      tags: [板块配置]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: boardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ==================== 系统配置 ====================
+  /admin/sensitive-words:
+    get:
+      summary: 获取敏感词列表
+      tags: [系统配置]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            example: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: keyword
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SensitiveWord'
+                      total:
+                        type: integer
+    post:
+      summary: 新增敏感词
+      tags: [系统配置]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [word, level]
+              properties:
+                word:
+                  type: string
+                  example: 违禁词
+                level:
+                  type: string
+                  enum: [高, 中, 低]
+                  example: 高
+                  description: 敏感等级
+      responses:
+        '200':
+          description: 添加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /admin/sensitive-words/{wordId}:
+    delete:
+      summary: 删除敏感词
+      tags: [系统配置]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: wordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+# ==================== 公共组件定义 ====================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 在 Header 中添加 `Authorization: Bearer {token}`
+
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+          description: 0 表示成功
+        message:
+          type: string
+          example: success
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 1001
+          description: 错误码
+        message:
+          type: string
+          example: 参数错误
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: user_10
+        email:
+          type: string
+          example: user10@example.com
+        role:
+          type: string
+          enum: [user, moderator, admin]
+          example: user
+        status:
+          type: string
+          enum: [active, banned]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-01-15 10:30:00'
+        lastLoginAt:
+          type: string
+          format: date-time
+          example: '2025-12-28 14:20:00'
+
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        title:
+          type: string
+          example: 欢迎来到天翼论坛
+        content:
+          type: string
+          example: 这是帖子正文内容...
+        author:
+          type: string
+          example: user_5
+        authorId:
+          type: integer
+          example: 5
+        boardId:
+          type: integer
+          example: 2
+          description: 所属板块ID
+        status:
+          type: string
+          enum: [normal, pending, archived]
+          example: normal
+          description: |
+            - normal: 正常
+            - pending: 待审核
+            - archived: 已下架
+        isTop:
+          type: boolean
+          example: false
+          description: 是否置顶
+        isFeatured:
+          type: boolean
+          example: false
+          description: 是否加精
+        hotScore:
+          type: integer
+          example: 850
+          description: 热度分数
+        violationScore:
+          type: integer
+          example: 5
+          description: 违规权重
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-12-20 09:15:00'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-12-28 18:45:00'
+
+    Complaint:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        targetType:
+          type: string
+          enum: [post, comment, user]
+          example: post
+          description: 举报对象类型
+        targetId:
+          type: integer
+          example: 123
+          description: 举报对象ID
+        reason:
+          type: string
+          example: 涉嫌广告
+        evidence:
+          type: string
+          example: https://example.com/screenshot.png
+          description: 证据截图链接
+        reporter:
+          type: string
+          example: user_10
+          description: 举报人用户名
+        reporterId:
+          type: integer
+          example: 10
+        status:
+          type: string
+          enum: [pending, resolved]
+          example: pending
+        handleNote:
+          type: string
+          example: 已处理
+          description: 处理说明
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-12-28 10:30:00'
+        handledAt:
+          type: string
+          format: date-time
+          example: '2025-12-28 15:20:00'
+
+    Board:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 技术交流
+        description:
+          type: string
+          example: 讨论编程、算法等技术话题
+        moderator:
+          type: string
+          example: moderator1
+          description: 版主用户名
+        moderatorId:
+          type: integer
+          example: 5
+        postCount:
+          type: integer
+          example: 120
+          description: 帖子数量
+        sort:
+          type: integer
+          example: 1
+          description: 排序权重
+        createdAt:
+          type: string
+          format: date-time
+
+    SensitiveWord:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        word:
+          type: string
+          example: 违禁词1
+        level:
+          type: string
+          enum: [高, 中, 低]
+          example: 高
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-12-01 10:00:00'
+
+  responses:
+    UnauthorizedError:
+      description: Token 无效或已过期
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 401
+              message:
+                type: string
+                example: Unauthorized

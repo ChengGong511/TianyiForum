@@ -1,0 +1,39 @@
+server:
+  port: 9090
+  servlet:
+    encoding:
+      enabled: true
+      charset: UTF-8
+      force: true
+
+spring:
+  main:
+    allow-circular-references: true
+  name: tianyi-forum-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/tianyidatabase?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+mybatis:
+  mapper-locations: classpath:Mapper/*.xml
+  type-aliases-package: com.tianyi.tianyiforumbackend.Eneity,com.tianyi.tianyiforumbackend.VO
+  configuration:
+    map-underscore-to-camel-case: true
+
+jwt:
+  secret: tianyi-forum-secret-key-for-jwt-token-generation-2024
+  expiration: 604800
+
+logging:
+  level:
+    com:
+      tianyi:
+        tianyiforumbackend:
+          Mapper: debug
+          Service: info
+          Controller: info

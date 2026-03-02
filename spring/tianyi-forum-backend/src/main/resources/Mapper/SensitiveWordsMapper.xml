@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.tianyi.tianyiforumbackend.Mapper.SensitiveWordsMapper">
+
+    <select id="findAll" resultType="com.tianyi.tianyiforumbackend.VO.SensitiveWordVO">
+        select * from sensitive_words u
+        <where>
+            <if test="keyword!=null and keyword!='' ">
+                and (u.id like concat('%',#{keyword},'%') or u.word like concat('%',#{keyword},'%'))
+            </if>
+        </where>
+
+    </select>
+</mapper>
